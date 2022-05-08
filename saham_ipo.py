@@ -12,6 +12,7 @@ import tabulate
 PARAM_SAVE_STOCK_DATA = 'Save Stock Data'
 PARAM_HISTORY_PERIOD = 'History Period'
 PARAM_TICK_INTERVAL = 'Tick Interval'
+PARAM_VERBOSE = 'Verbose'
 
 backtest_stocks_list = []
 backtest_trailing_sl_list = []
@@ -134,10 +135,10 @@ def get_dict_stock_pl_backtest(str_p_symbol, int_p_ipo_price, int_p_ts, int_p_sm
     df_stock_analysis.insert(len(df_stock_analysis.columns), 'Change %', 0) # iterative calc
 
     df_stock_analysis.insert(len(df_stock_analysis.columns), 'IPO Date', stock_dt_ipo_date) # constant
-    df_stock_analysis.insert(len(df_stock_analysis.columns), 'IPO Price', stock_int_ipo_price) # constant
+    # df_stock_analysis.insert(len(df_stock_analysis.columns), 'IPO Price', stock_int_ipo_price) # constant
     
-    df_stock_analysis.insert(len(df_stock_analysis.columns), 'Floating PL %', 0) # 1 formula calc for all
-    df_stock_analysis['Floating PL %'] = round(df_stock_analysis['Close'] / stock_int_ipo_price * 100, 1) - 100
+    # df_stock_analysis.insert(len(df_stock_analysis.columns), 'Floating PL %', 0) # 1 formula calc for all
+    # df_stock_analysis['Floating PL %'] = round(df_stock_analysis['Close'] / stock_int_ipo_price * 100, 1) - 100
 
     df_stock_analysis.insert(len(df_stock_analysis.columns), 'Peak Price', 0) # iterative calc
     df_stock_analysis.insert(len(df_stock_analysis.columns), 'Trailing Stop %', stock_int_trail_percent)
@@ -206,14 +207,14 @@ def get_dict_stock_pl_backtest(str_p_symbol, int_p_ipo_price, int_p_ts, int_p_sm
         dict_stock_profit_loss['Sell Date'] = stock_dt_selling_date
         dict_stock_profit_loss['Days'] = stock_int_days_hold
         
+    if backtest_params_dict[PARAM_VERBOSE]:
+        print('--- will return following summary')
+        print(dict_stock_profit_loss)
+        print()
 
-    print('--- will return following summary')
-    print(dict_stock_profit_loss)
-    print()
-
-    print('--- will return following detail')
-    print(df_stock_analysis)
-    print()
+        print('--- will return following detail')
+        print(df_stock_analysis)
+        print()
     
     return dict_stock_profit_loss, df_stock_analysis;
 
@@ -230,40 +231,55 @@ def execute_backtest(int_p_ts, int_p_sma):
     print()
 
     list_stocks_pl_insight_dict = []
-    for i in backtest_stocks_list:
-        str_symbol = i[0]
-        int_ipo_price = i[1]
+
+    dt_time1 = datetime.datetime.now()
+    l = 0
+    n = len(backtest_stocks_list)
+    while l < n:
+        str_symbol = backtest_stocks_list[l][0]
+        int_ipo_price = backtest_stocks_list[l][1]
 
         print('//////////')
-        print('Verify stock [' + i[0] + '] OK')
+        print('Verify stock [' + str_symbol + '] OK')
         dict_stock_profit_loss, df_stock_detail = get_dict_stock_pl_backtest(str_symbol, int_ipo_price, int_p_ts, int_p_sma)
-        print('--- returned summary ')
-        print(dict_stock_profit_loss)
-        print()
-        print('--- returned detail ')
-        print(df_stock_detail)
-        print()
+
+        if backtest_params_dict[PARAM_VERBOSE]:
+            print('--- returned summary ')
+            print(dict_stock_profit_loss)
+            print()
+
+            print('--- returned detail ')
+            print(df_stock_detail)
+            print()
 
         if backtest_params_dict[PARAM_SAVE_STOCK_DATA]:
             print('Writing to Excel', end=' ')
             df_stock_detail.to_excel(xlsx_writer, sheet_name=str_symbol)
-            xlsx_writer.save()
+            # xlsx_writer.save()
             print('--- DONE')
             print()
 
+        list_stocks_pl_insight_dict.append(dict_stock_profit_loss)
+        print('....................')
+
+        dt_time1x = datetime.datetime.now()
+        float_diff1x = (dt_time1x - dt_time1).total_seconds()
+        float_estimate = (float_diff1x / (l+1)) * n
+        print('[Elapsed / Est. Total Time for backtest TS', int_p_ts, '% - SMA', int_p_sma ,']', round(float_diff1x, 1), 's / ', round(float_estimate, 1), 's')
+        print()
+
+        l += 1
+
+    print()
+
+    if backtest_params_dict[PARAM_VERBOSE]:
+        print('//////////')
+        print('wrapped up for IPO stocks P/L')
+        list_header = list_stocks_pl_insight_dict[0].keys()
+        list_rows = [x.values() for x in list_stocks_pl_insight_dict]
+        print(tabulate.tabulate(list_rows, list_header))
         print('....................')
         print()
-        list_stocks_pl_insight_dict.append(dict_stock_profit_loss)
-
-    print()
-
-    print('//////////')
-    print('wrapped up for IPO stocks P/L')
-    list_header = list_stocks_pl_insight_dict[0].keys()
-    list_rows = [x.values() for x in list_stocks_pl_insight_dict]
-    print(tabulate.tabulate(list_rows, list_header))
-    print('....................')
-    print()
 
     print('//////////')
     print('Writing P/L summary to Excel', end=' ')
@@ -276,8 +292,14 @@ def execute_backtest(int_p_ts, int_p_sma):
     print()
 
     print('Closing Excel', end=' ')
-    xlsx_writer.close()
+    xlsx_writer.save()
+    # xlsx_writer.close()
     print('--- DONE')
+
+    dt_time2 = datetime.datetime.now()
+    float_diff12 = (dt_time2 - dt_time1).total_seconds()
+    print('[Total Execution Time]', round(float_diff12, 1), 's')
+    print()
 
     return None
 
@@ -287,18 +309,27 @@ def retrieve_all_stocks_ticks():
     print('//////////')
     print('Writing raw data to Excel saham_ipo-harian.xlsx')
     print()
-    
+
     print('Preparing ExcelWriter', end=' ')
     xlsx_writer = pd.ExcelWriter('saham_ipo-harian.xlsx', mode='w')
     print('--- DONE')
     print()
 
-    for i in backtest_stocks_list:
-        
-        print('Fetching data for [' + i[0] + ']', end =' ')
-        stock_ticker = yf.Ticker(str(i[0]) + '.JK')
+    dt_time1 = datetime.datetime.now()
+    l = 0
+    n = len(backtest_stocks_list)
+    while l < n:
+        str_symbol = backtest_stocks_list[l][0]
+        int_ipo_price = backtest_stocks_list[l][1]
+
+        print('Fetching data for [' + str_symbol + ']', end =' ')
+        stock_ticker = yf.Ticker(str_symbol + '.JK')
         stock_data_df = stock_ticker.history(period=backtest_params_dict[PARAM_HISTORY_PERIOD], interval=backtest_params_dict[PARAM_TICK_INTERVAL])
         print('--- DONE')
+
+        stock_data_df.insert(len(stock_data_df.columns), 'IPO Price', int_ipo_price)
+        stock_data_df.insert(len(stock_data_df.columns), 'Floating PL %', 0)
+        stock_data_df['Floating PL %'] = stock_data_df['IPO Price'] / stock_data_df['Close'] * 100
 
         for x in backtest_sma_sl_list:
             print('Adding TA indicators SMA-', x, end=' ')
@@ -307,25 +338,39 @@ def retrieve_all_stocks_ticks():
             print('--- DONE')
         
         print('Writing raw data to Excel', end=' ')
-        stock_data_df.to_excel(xlsx_writer, sheet_name=i[0])        
-        xlsx_writer.save()
+        stock_data_df.to_excel(xlsx_writer, sheet_name=str_symbol)
+        # xlsx_writer.save()
         print('--- DONE')
+
+        all_stocks_ticks_df_dict[str_symbol] = stock_data_df
+
+        dt_time1x = datetime.datetime.now()
+        float_diff1x = (dt_time1x - dt_time1).total_seconds()
+        float_estimate = (float_diff1x / (l+1)) * n
+        print('[Elapsed / Est. Total Time for downloading stock data from Yahoo]', round(float_diff1x, 1), 's / ', round(float_estimate, 1), 's')
         print()
 
-        all_stocks_ticks_df_dict[i[0]] = stock_data_df
+        l += 1
+
 
     print('Closing Excel', end=' ')
-    xlsx_writer.close()
+    xlsx_writer.save()
+    # xlsx_writer.close()
     print('--- DONE')
+
+    dt_time2 = datetime.datetime.now()
+    float_diff12 = (dt_time2 - dt_time1).total_seconds()
+    print('[Total Execution Time]', round(float_diff12, 1), 's')
     print()
 
-    for x in all_stocks_ticks_df_dict:
-        print('//////////')
-        print('Verbose stock data [' + x + '] OK')
-        print()
-        print(all_stocks_ticks_df_dict[x])
-        print('....................')
-        print()
+    if backtest_params_dict[PARAM_VERBOSE]:
+        for x in all_stocks_ticks_df_dict:
+            print('//////////')
+            print('Verbose stock data [' + x + '] OK')
+            print()
+            print(all_stocks_ticks_df_dict[x])
+            print('....................')
+            print()
 
     print()
 
@@ -389,6 +434,8 @@ def main():
     retrieve_all_stocks_ticks()
 
     # backtest the strategy based-on various Trailing SL & SMA SL.
+    execute_backtest(0, 0)
+
     for int_ts in backtest_trailing_sl_list:
         execute_backtest(int_ts, 0)
 
